@@ -22,22 +22,16 @@ jobs:
 
       - name: Create RDP User
         run: |
-          # كلمة مرور قوية وثابتة لتجنب أخطاء التوليد والرموز العشوائية
-          $rdpPass = "P@ssw0rd2026!#"
-          net user RDP $rdpPass /add /y
+          net user RDP "P@ssw0rd2026!#" /add /y
           net localgroup Administrators RDP /add
           net localgroup "Remote Desktop Users" RDP /add
-          
-          echo "RDP_PASS=$rdpPass" >> $env:GITHUB_ENV
 
       - name: Install Tailscale
+        shell: cmd
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          
-          Invoke-WebRequest -Uri $tsUrl -OutFile$installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+          curl.exe -L -o tailscale.msi "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+          msiexec.exe /i tailscale.msi /quiet /norestart
+          del tailscale.msi
 
       - name: Establish Tailscale Connection
         run: |
@@ -68,7 +62,7 @@ jobs:
           Write-Host "`n=============================="
           Write-Host "Tailscale IP : $env:TAILSCALE_IP"
           Write-Host "Username     : RDP"
-          Write-Host "Password     : $env:RDP_PASS"
+          Write-Host "Password     : P@ssw0rd2026!#"
           Write-Host "==============================`n"
           
           while ($true) {
