@@ -10,61 +10,41 @@ jobs:
 
     steps:
       - name: Configure Core RDP Settings
+        shell: cmd
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-
-          Restart-Service -Name TermService -Force
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v SecurityLayer /t REG_DWORD /d 0 /f
+          netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
+          net start TermService
 
       - name: Create RDP User
+        shell: cmd
         run: |
           net user RDP "P@ssw0rd2026!#" /add /y
           net localgroup Administrators RDP /add
           net localgroup "Remote Desktop Users" RDP /add
 
-      - name: Install Tailscale
-        shell: cmd
-        run: |
-          curl.exe -L -o tailscale.msi "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
-          msiexec.exe /i tailscale.msi /quiet /norestart
-          del tailscale.msi
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          hostname: gh-runner-${{ github.run_id }}
 
-      - name: Establish Tailscale Connection
+      - name: Get Tailscale IP
+        shell: pwsh
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID$tsIP = $null$retries = 0
-          while (-not $tsIP -and$retries -lt 12) {
-              Start-Sleep -Seconds 5
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-              $retries++
-          }
-          
-          if (-not $tsIP) {
-              Write-Error "Tailscale IP not assigned. Exiting."
-              exit 1
-          }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-
-      - name: Verify RDP Accessibility
-        run: |
-          $localTest = Test-NetConnection -ComputerName 127.0.0.1 -Port 3389
-          if (-not $localTest.TcpTestSucceeded) {
-              Write-Error "Local RDP service is not listening on port 3389"
-              exit 1
-          }
-          Write-Host "RDP service is active and listening on port 3389."
+          $ip = tailscale ip -4
+          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
 
       - name: Maintain Connection
+        shell: pwsh
         run: |
           Write-Host "`n=============================="
           Write-Host "Tailscale IP : $env:TAILSCALE_IP"
           Write-Host "Username     : RDP"
           Write-Host "Password     : P@ssw0rd2026!#"
           Write-Host "==============================`n"
-          
           while ($true) {
               Write-Host "[$(Get-Date)] Session is active..."
               Start-Sleep -Seconds 180
